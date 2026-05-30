@@ -1,0 +1,33 @@
+services:
+  api:
+    build: ./app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./events:/events
+    environment:
+      - DATABASE_URL=sqlite:////data/store_intelligence.db
+      - LOG_LEVEL=INFO
+      - REENTRY_WINDOW_MINUTES=30
+      - QUEUE_SPIKE_THRESHOLD=8
+      - POS_CORRELATION_WINDOW_MINUTES=5
+    restart: unless-stopped
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  pipeline:
+    build: ./pipeline
+    profiles:
+      - detection
+    volumes:
+      - ./clips:/clips:ro
+      - ./events:/events
+    depends_on:
+      - api
