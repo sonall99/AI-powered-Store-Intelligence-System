@@ -4,7 +4,7 @@ Manages visitor identity across frames.
 - Assigns visitor_id to each ByteTrack track
 - Tracks zone entry/exit via polygon containment
 - Detects re-entry via appearance buffer
-- Detects staff via HSV uniform color
+- Detects staff via HSV uniform color (with dynamic thresholds and geofencing)
 - Manages dwell timing for ZONE_DWELL events
 """
 
@@ -14,6 +14,7 @@ import numpy as np
 from datetime import datetime, timezone
 from typing import Optional
 from detection_pipeline.emit import make_event, StoreEvent
+import collections
 
 
 def point_in_polygon(point: tuple, polygon: list) -> bool:
@@ -112,6 +113,11 @@ class TrackState:
         self.session_seq = 0
         self.appearance: Optional[np.ndarray] = None
         self.crossed_tripwire = False
+        
+        # --- VARIABLES FOR DEBOUNCING & FLICKERING ---
+        self.staff_history = collections.deque(maxlen=15)
+        self.candidate_zone: Optional[str] = None
+        self.candidate_frames: int = 0
 
 
 class VisitorTracker:
@@ -133,16 +139,22 @@ class VisitorTracker:
         self.has_tripwire = camera_config.get("has_tripwire", False)
         self.tripwire = camera_config.get("tripwire", {})
         
-        # Staff uniform HSV
+        # --- STAFF DETECTION CONFIG (Geofence & Thresholds) ---
+        self.staff_zone_polygon = camera_config.get("staff_zone_polygon", None)
         staff_cfg = store_layout.get("staff_uniform", {})
         self.staff_hsv_lower = staff_cfg.get("hsv_lower", [0, 0, 0])
         self.staff_hsv_upper = staff_cfg.get("hsv_upper", [180, 255, 80])
         
+        # Apply camera-specific override for staff threshold if it exists
+        self.staff_threshold = camera_config.get(
+            "staff_threshold_override",
+            staff_cfg.get("pixel_ratio_threshold", 0.40)
+        )
+        
         # Active tracks: ByteTrack int ID → TrackState
         self.active_tracks: dict[int, TrackState] = {}
         
-        # Re-ID buffer: visitor_id → {embedding, exited_at_ms}
-        # TTL = 30 minutes
+        # Re-ID buffer: visitor_id → {embedding, exited_at_ms, session_id}
         self.reid_buffer: dict[str, dict] = {}
         self.reentry_window_ms = store_layout.get("reentry_window_minutes", 30) * 60 * 1000
         
@@ -150,11 +162,33 @@ class VisitorTracker:
         self.prev_centroids: dict[int, tuple] = {}
         
         # Billing zone queue tracking
-        self.billing_zones = {z["zone_id"] for z in store_layout["zones"]
+        self.billing_zones = {z["zone_id"] for z in store_layout.get("zones", [])
                               if z.get("is_billing")}
         self.current_queue_depth = 0
         
         self.clip_id = f"{self.store_id}_{self.camera_id}"
+
+    
+    def _determine_staff(self, frame, xyxy, centroid: tuple) -> bool:
+        """
+        Cascading staff detection:
+        1. Inside staff zone polygon → definitely staff
+        2. Outside zone → check HSV uniform color (with dynamic threshold)
+        3. Neither → customer
+        """
+        # Primary: spatial check
+        if self.staff_zone_polygon:
+            if point_in_polygon(centroid, self.staff_zone_polygon):
+                return True
+                
+        # Secondary: HSV uniform color fallback
+        is_staff, _ = is_staff_by_uniform(
+            frame, xyxy,
+            self.staff_hsv_lower,
+            self.staff_hsv_upper,
+            threshold=self.staff_threshold  # Using dynamic override
+        )
+        return is_staff
     
     def process_frame(self, result, frame_idx: int, timestamp_ms: int) -> list[StoreEvent]:
         """Process one frame of YOLO tracking results. Returns list of events."""
@@ -175,17 +209,11 @@ class VisitorTracker:
                 centroid = get_centroid(xyxy)
                 seen_track_ids.add(track_id)
                 
-                # Determine if staff
+                # --- NEW CASCADING STAFF DETECTION ---
                 if self.is_stockroom:
-                    # Everything in stockroom is staff
                     is_staff = True
-                    staff_conf = 1.0
                 else:
-                    is_staff, staff_conf = is_staff_by_uniform(
-                        frame, xyxy,
-                        self.staff_hsv_lower,
-                        self.staff_hsv_upper
-                    )
+                    is_staff = self._determine_staff(frame, xyxy, centroid)
                 
                 # Compute appearance embedding
                 appearance = compute_appearance(frame, xyxy)
@@ -199,14 +227,12 @@ class VisitorTracker:
                     state.appearance = appearance
                     self.active_tracks[track_id] = state
                     
-                    # Emit ENTRY (only from entry camera, only for customers)
+                    # Emit ENTRY
                     if (self.has_tripwire and not is_staff
                             and not self.is_stockroom):
-                        # Don't emit yet — wait for tripwire crossing
                         pass
                     elif (not self.has_tripwire and not is_staff
                           and not self.is_stockroom):
-                        # Non-entry cameras: emit entry when first seen
                         if is_reentry:
                             events.append(make_event(
                                 store_id=self.store_id,
@@ -225,8 +251,12 @@ class VisitorTracker:
                 state.last_seen_ms = timestamp_ms
                 if appearance is not None:
                     state.appearance = appearance
+
+                # --- ROLLING AVERAGE FOR STAFF ---
+                state.staff_history.append(is_staff)
+                state.is_staff = sum(state.staff_history) > (len(state.staff_history) / 2)
                 
-                # Tripwire crossing (entry camera only)
+                # Tripwire crossing
                 if self.has_tripwire and track_id in self.prev_centroids:
                     crossing = self._check_tripwire_crossing(
                         self.prev_centroids[track_id], centroid
@@ -255,7 +285,7 @@ class VisitorTracker:
                             ))
                         state.crossed_tripwire = False
                 
-                # Zone detection (non-entry cameras)
+                # Zone detection
                 if not self.has_tripwire and not self.is_stockroom:
                     zone_events = self._process_zone(
                         state, centroid, timestamp_ms, conf, frame_idx
@@ -270,7 +300,7 @@ class VisitorTracker:
             state = self.active_tracks.pop(track_id)
             self._add_to_reid_buffer(state)
             
-            # Emit EXIT for zone cameras when track is lost
+            # Emit EXIT
             if (not self.has_tripwire and not self.is_stockroom
                     and not state.is_staff and state.current_zone):
                 dwell = timestamp_ms - (state.zone_entered_at_ms or timestamp_ms)
@@ -297,26 +327,23 @@ class VisitorTracker:
         self.current_queue_depth = billing_visitors
         
         return events
-    
+
     def _assign_identity(self, appearance, timestamp_ms, is_staff):
-        """
-        Check Re-ID buffer. Return (visitor_id, session_id, is_reentry).
-        """
         if appearance is not None:
             for vid, data in self.reid_buffer.items():
-                # Check TTL
                 age_ms = timestamp_ms - data["exited_at_ms"]
                 if age_ms > self.reentry_window_ms:
                     continue
-                # Check similarity
+                
                 if data["embedding"] is not None:
                     sim = cosine_similarity(appearance, data["embedding"])
                     if sim > 0.75:
-                        # Re-entry detected
+                        if age_ms < 60_000:
+                            return vid, data["session_id"], False 
+                        
                         new_session_id = f"SES_{uuid.uuid4().hex[:8]}"
                         return vid, new_session_id, True
         
-        # New visitor
         visitor_id = f"VIS_{uuid.uuid4().hex[:6]}"
         session_id = f"SES_{uuid.uuid4().hex[:8]}"
         return visitor_id, session_id, False
@@ -325,24 +352,27 @@ class VisitorTracker:
         self.reid_buffer[state.visitor_id] = {
             "embedding": state.appearance,
             "exited_at_ms": state.last_seen_ms,
+            "session_id": state.session_id 
         }
     
     def _check_tripwire_crossing(self, prev: tuple, curr: tuple) -> Optional[str]:
-        """
-        Returns 'entry', 'exit', or None.
-        CAM 3: moving from high Y (outside) to low Y (inside) = ENTRY.
-        """
         if not self.tripwire:
             return None
         
         wire_y = self.tripwire.get("y1", 620)
+        wire_x1 = self.tripwire.get("x1", 450)
+        wire_x2 = self.tripwire.get("x2", 950)
         inside_is = self.tripwire.get("inside_is", "top")
         
+        x_in_bounds = (wire_x1 <= prev[0] <= wire_x2) or (wire_x1 <= curr[0] <= wire_x2)
+        if not x_in_bounds:
+            return None 
+        
+        buffer_size = 40 
         if inside_is == "top":
-            # top = inside (lower Y value)
-            if prev[1] > wire_y and curr[1] <= wire_y:
+            if prev[1] > (wire_y + buffer_size) and curr[1] < (wire_y - buffer_size):
                 return "entry"
-            if prev[1] <= wire_y and curr[1] > wire_y:
+            if prev[1] < (wire_y - buffer_size) and curr[1] > (wire_y + buffer_size):
                 return "exit"
         
         return None
@@ -350,101 +380,76 @@ class VisitorTracker:
     def _process_zone(self, state: TrackState, centroid: tuple,
                       timestamp_ms: int, conf: float, frame_idx: int) -> list:
         events = []
-        
-        # Find which zone the centroid is in
         current_zone = None
         for zone_id, polygon in self.zone_polygons.items():
             if point_in_polygon(centroid, polygon):
                 current_zone = zone_id
                 break
         
-        # Zone transition
         if current_zone != state.current_zone:
-            
-            # Zone exit
-            if state.current_zone is not None:
-                dwell = timestamp_ms - (state.zone_entered_at_ms or timestamp_ms)
-                events.append(make_event(
-                    store_id=self.store_id,
-                    camera_id=self.camera_id,
-                    visitor_id=state.visitor_id,
-                    session_id=state.session_id,
-                    event_type="ZONE_EXIT",
-                    timestamp_ms=timestamp_ms,
-                    zone_id=state.current_zone,
-                    dwell_ms=dwell,
-                    is_staff=state.is_staff,
-                    confidence=conf,
-                    frame_number=frame_idx,
-                    clip_id=self.clip_id,
-                ))
-            
-            # Zone enter
-            if current_zone is not None:
-                state.session_seq += 1
+            if current_zone == state.candidate_zone:
+                state.candidate_frames += 1
+            else:
+                state.candidate_zone = current_zone
+                state.candidate_frames = 1
                 
-                # Billing queue join
-                if current_zone in self.billing_zones:
-                    queue_at_entry = sum(
-                        1 for s in self.active_tracks.values()
-                        if s.current_zone in self.billing_zones and not s.is_staff
-                    )
-                    event_type = ("BILLING_QUEUE_JOIN"
-                                  if queue_at_entry > 0 else "ZONE_ENTER")
+            if state.candidate_frames >= 15:
+                if state.current_zone is not None:
+                    dwell = timestamp_ms - (state.zone_entered_at_ms or timestamp_ms)
                     events.append(make_event(
-                        store_id=self.store_id,
-                        camera_id=self.camera_id,
-                        visitor_id=state.visitor_id,
-                        session_id=state.session_id,
-                        event_type=event_type,
-                        timestamp_ms=timestamp_ms,
-                        zone_id=current_zone,
-                        is_staff=state.is_staff,
-                        confidence=conf,
-                        frame_number=frame_idx,
-                        clip_id=self.clip_id,
-                        session_seq=state.session_seq,
-                        queue_depth=queue_at_entry,
+                        store_id=self.store_id, camera_id=self.camera_id,
+                        visitor_id=state.visitor_id, session_id=state.session_id,
+                        event_type="ZONE_EXIT", timestamp_ms=timestamp_ms,
+                        zone_id=state.current_zone, dwell_ms=dwell,
+                        is_staff=state.is_staff, confidence=conf,
+                        frame_number=frame_idx, clip_id=self.clip_id,
                     ))
-                else:
-                    events.append(make_event(
-                        store_id=self.store_id,
-                        camera_id=self.camera_id,
-                        visitor_id=state.visitor_id,
-                        session_id=state.session_id,
-                        event_type="ZONE_ENTER",
-                        timestamp_ms=timestamp_ms,
-                        zone_id=current_zone,
-                        is_staff=state.is_staff,
-                        confidence=conf,
-                        frame_number=frame_idx,
-                        clip_id=self.clip_id,
-                        session_seq=state.session_seq,
-                    ))
+                
+                if current_zone is not None:
+                    state.session_seq += 1
+                    if current_zone in self.billing_zones:
+                        queue_at_entry = sum(
+                            1 for s in self.active_tracks.values()
+                            if s.current_zone in self.billing_zones and not s.is_staff
+                        )
+                        event_type = "BILLING_QUEUE_JOIN" if queue_at_entry > 0 else "ZONE_ENTER"
+                        events.append(make_event(
+                            store_id=self.store_id, camera_id=self.camera_id,
+                            visitor_id=state.visitor_id, session_id=state.session_id,
+                            event_type=event_type, timestamp_ms=timestamp_ms,
+                            zone_id=current_zone, is_staff=state.is_staff,
+                            confidence=conf, frame_number=frame_idx,
+                            clip_id=self.clip_id, session_seq=state.session_seq,
+                            queue_depth=queue_at_entry,
+                        ))
+                    else:
+                        events.append(make_event(
+                            store_id=self.store_id, camera_id=self.camera_id,
+                            visitor_id=state.visitor_id, session_id=state.session_id,
+                            event_type="ZONE_ENTER", timestamp_ms=timestamp_ms,
+                            zone_id=current_zone, is_staff=state.is_staff,
+                            confidence=conf, frame_number=frame_idx,
+                            clip_id=self.clip_id, session_seq=state.session_seq,
+                        ))
                 
                 state.zone_entered_at_ms = timestamp_ms
                 state.last_dwell_emit_ms = timestamp_ms
+                state.current_zone = current_zone
+                state.candidate_frames = 0
+        else:
+            state.candidate_frames = 0
             
-            state.current_zone = current_zone
-        
-        # ZONE_DWELL — emit every 30 seconds of continuous dwell
-        elif (current_zone is not None and state.last_dwell_emit_ms is not None):
+        if (state.current_zone is not None and state.last_dwell_emit_ms is not None):
             dwell_since_last = timestamp_ms - state.last_dwell_emit_ms
             if dwell_since_last >= 30_000:
                 total_dwell = timestamp_ms - (state.zone_entered_at_ms or timestamp_ms)
                 events.append(make_event(
-                    store_id=self.store_id,
-                    camera_id=self.camera_id,
-                    visitor_id=state.visitor_id,
-                    session_id=state.session_id,
-                    event_type="ZONE_DWELL",
-                    timestamp_ms=timestamp_ms,
-                    zone_id=current_zone,
-                    dwell_ms=total_dwell,
-                    is_staff=state.is_staff,
-                    confidence=conf,
-                    frame_number=frame_idx,
-                    clip_id=self.clip_id,
+                    store_id=self.store_id, camera_id=self.camera_id,
+                    visitor_id=state.visitor_id, session_id=state.session_id,
+                    event_type="ZONE_DWELL", timestamp_ms=timestamp_ms,
+                    zone_id=state.current_zone, dwell_ms=total_dwell,
+                    is_staff=state.is_staff, confidence=conf,
+                    frame_number=frame_idx, clip_id=self.clip_id,
                 ))
                 state.last_dwell_emit_ms = timestamp_ms
         

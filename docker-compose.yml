@@ -6,6 +6,7 @@ services:
     volumes:
       - ./data:/data
       - ./events:/events
+      - ./config:/config 
     environment:
       - DATABASE_URL=sqlite:////data/store_intelligence.db
       - LOG_LEVEL=INFO
@@ -29,5 +30,6 @@ services:
     volumes:
       - ./clips:/clips:ro
       - ./events:/events
+      - ./config:/config:ro 
     depends_on:
       - api

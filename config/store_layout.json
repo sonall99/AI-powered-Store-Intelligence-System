@@ -1,0 +1,248 @@
+{
+  "store_id": "ST1008",
+  "store_name": "Brigade_Bangalore",
+  "city": "Bangalore",
+  "date": "10-04-2026",
+  "operating_hours": {
+    "open": "12:00",
+    "close": "22:00"
+  },
+  "pos_correlation_window_minutes": 5,
+  "reentry_window_minutes": 30,
+  "staff_uniform": {
+    "hsv_lower": [0, 0, 0],
+    "hsv_upper": [180, 255, 50],
+    "description": "Staff wear black uniforms — confirmed across CAM1, CAM2, CAM5",
+    "notes": "Dark/black clothing. HSV range covers near-black. Threshold pixel_ratio: 0.40"
+  },
+  "cameras": [
+    {
+      "camera_id": "CAM_1",
+      "staff_threshold_override": 0.55,
+      "filename": "CAM 1.mp4",
+      "role": "skincare_zone",
+      "start_time": "2026-04-10T20:10:27",
+      "start_time_source": "burned_in_frame_minus_5sec_offset",
+      "fps": 29.97,
+      "resolution": [1920, 1080],
+      "has_tripwire": false,
+      "contributes_to_entry_count": false,
+      "is_stockroom": false,
+      "zones_covered": [
+        "BACK_WALL_SKINCARE",
+        "FRAGRANCE_NAIL",
+        "FOH_LEFT"
+      ],
+      "zone_polygons": {
+        "BACK_WALL_SKINCARE": [
+          [0, 0], [1920, 0], [1920, 550], [0, 550]
+        ],
+        "FRAGRANCE_NAIL": [
+          [400, 550], [900, 550], [900, 900], [400, 900]
+        ],
+        "FOH_LEFT": [
+          [0, 550], [400, 550], [400, 1080], [0, 1080]
+        ]
+      },
+      "camera_notes": "Wide-angle fisheye. Rear skincare wall fully visible. Rotating fragrance display at bottom-center."
+    },
+    {
+      "camera_id": "CAM_2",
+      "filename": "CAM 2.mp4",
+      "role": "main_floor_makeup",
+      "start_time": "2026-04-10T20:10:02",
+      "start_time_source": "burned_in_frame_minus_5sec_offset",
+      "fps": 29.97,
+      "resolution": [1920, 1080],
+      "has_tripwire": false,
+      "contributes_to_entry_count": false,
+      "is_stockroom": false,
+      "zones_covered": [
+        "FRONT_SHELF_MAKEUP",
+        "MAKEUP_UNIT",
+        "FOH_CENTER",
+        "ACCESSORIES"
+      ],
+      "zone_polygons": {
+        "ACCESSORIES": [
+          [0, 100], [230, 100], [230, 500], [0, 500]
+        ],
+        "MAKEUP_UNIT": [
+          [230, 300], [700, 300], [700, 800], [230, 800]
+        ],
+        "FRONT_SHELF_MAKEUP": [
+          [400, 100], [1920, 100], [1920, 900], [400, 900]
+        ],
+        "FOH_CENTER": [
+          [230, 700], [700, 700], [700, 1080], [230, 1080]
+        ]
+      },
+      "camera_notes": "Main floor wide-angle. Makeup shelves on right wall. Alps/fragrance left. Staff visible in black uniform. Summer Essentials display at bottom-center."
+    },
+    {
+      "camera_id": "CAM_3",
+      "filename": "CAM 3.mp4",
+      "role": "entry_exit",
+      "start_time": "2026-04-10T20:10:02",
+      "start_time_source": "synchronized_with_CAM2_no_burned_timestamp",
+      "fps": 29.97,
+      "resolution": [1920, 1080],
+      "has_tripwire": true,
+      "contributes_to_entry_count": true,
+      "is_stockroom": false,
+      "tripwire": {
+        "x1": 450,
+        "y1": 620,
+        "x2": 950,
+        "y2": 620,
+        "direction_notes": "Horizontal line across the glass door opening. Person moving from bottom (outside, dark area) to top (inside, lit store) = ENTRY. Reverse = EXIT.",
+        "inside_is": "top",
+        "outside_is": "bottom_and_right_dark_area"
+      },
+      "zones_covered": ["ENTRY_EXIT", "FOH_ENTRANCE"],
+      "zone_polygons": {
+        "ENTRY_EXIT": [
+          [300, 400], [1050, 400], [1050, 900], [300, 900]
+        ],
+        "FOH_ENTRANCE": [
+          [0, 0], [700, 0], [700, 400], [0, 400]
+        ]
+      },
+      "camera_notes": "Entry camera looking inward through glass door. Purplle lightbox on left. Entrance mat visible. Dark exterior bottom-right. NO burned-in timestamp — synchronized to CAM2 start time. CRITICAL: this is the entry/exit count camera."
+    },
+    {
+      "camera_id": "CAM_4",
+      "filename": "CAM 4.mp4",
+      "role": "stockroom",
+      "start_time": "2026-04-10T20:09:45",
+      "start_time_source": "burned_in_frame_minus_5sec_offset",
+      "fps": 24.98,
+      "resolution": [1920, 1080],
+      "has_tripwire": false,
+      "contributes_to_entry_count": false,
+      "is_stockroom": true,
+      "exclude_from_customer_metrics": true,
+      "zones_covered": ["STOCKROOM"],
+      "zone_polygons": {
+        "STOCKROOM": [
+          [0, 0], [1920, 0], [1920, 1080], [0, 1080]
+        ]
+      },
+      "camera_notes": "Back stockroom. Cardboard boxes, supply shelves, staff area. ALL detections here are staff. Must be excluded from customer visitor counts and zone analytics. Do not emit ENTRY/EXIT events from this camera."
+    },
+    {
+      "camera_id": "CAM_5",
+      "filename": "CAM 5.mp4",
+      "role": "billing",
+      "start_time": "2026-04-10T20:09:47",
+      "start_time_source": "burned_in_frame_minus_5sec_offset",
+      "fps": 24.98,
+      "resolution": [1920, 1080],
+      "has_tripwire": false,
+      "contributes_to_entry_count": false,
+      "is_stockroom": false,
+      "zones_covered": ["CASH_COUNTER", "ACCESSORIES_DISPLAY"],
+      "zone_polygons": {
+        "CASH_COUNTER": [
+          [50, 300], [900, 300], [900, 1080], [50, 1080]
+        ],
+        "ACCESSORIES_DISPLAY": [
+          [950, 0], [1920, 0], [1920, 1080], [950, 1080]
+        ]
+      },
+      "camera_notes": "Billing area. POS laptop visible center-left. Accessories illuminated panel right. Mamaearth/Foxtale/Vinci shelves background. Staff partially occluded behind counter barrier. This is the POS correlation camera."
+    }
+  ],
+  "zones": [
+    {
+      "zone_id": "ENTRY_EXIT",
+      "description": "Glass entry/exit door threshold",
+      "type": "threshold",
+      "is_billing": false,
+      "camera_primary": "CAM_3"
+    },
+    {
+      "zone_id": "FOH_ENTRANCE",
+      "description": "Immediate interior near entrance",
+      "type": "floor",
+      "is_billing": false,
+      "camera_primary": "CAM_3"
+    },
+    {
+      "zone_id": "FOH_LEFT",
+      "description": "Left floor area near skincare",
+      "type": "floor",
+      "is_billing": false,
+      "camera_primary": "CAM_1"
+    },
+    {
+      "zone_id": "FOH_CENTER",
+      "description": "Central floor area",
+      "type": "floor",
+      "is_billing": false,
+      "camera_primary": "CAM_2"
+    },
+    {
+      "zone_id": "BACK_WALL_SKINCARE",
+      "description": "Rear wall — FarmStay, Face Shop, Good Vibes, DermaCo, Minimalist, Aqualogica",
+      "type": "shelf",
+      "is_billing": false,
+      "camera_primary": "CAM_1",
+      "brands": ["FarmStay", "The Face Shop", "Good Vibes", "DermaCo",
+                 "Minimalist", "Aqualogica"]
+    },
+    {
+      "zone_id": "FRAGRANCE_NAIL",
+      "description": "Rotating fragrance display and nail unit — left-center floor",
+      "type": "display",
+      "is_billing": false,
+      "camera_primary": "CAM_1"
+    },
+    {
+      "zone_id": "FRONT_SHELF_MAKEUP",
+      "description": "Front shelves — Swiss Beauty, Lakme, Faces Canada, Maybelline, L'Oreal, Alps",
+      "type": "shelf",
+      "is_billing": false,
+      "camera_primary": "CAM_2",
+      "brands": ["Swiss Beauty", "Lakme", "Faces Canada", "Maybelline",
+                 "L'Oreal", "Alps Goodness"]
+    },
+    {
+      "zone_id": "MAKEUP_UNIT",
+      "description": "Makeup consultation unit — center-left floor with mirror",
+      "type": "service",
+      "is_billing": false,
+      "camera_primary": "CAM_2"
+    },
+    {
+      "zone_id": "ACCESSORIES",
+      "description": "Accessories display — left wall panel",
+      "type": "shelf",
+      "is_billing": false,
+      "camera_primary": "CAM_2"
+    },
+    {
+      "zone_id": "CASH_COUNTER",
+      "description": "Cash counter — POS laptop, right side of store. ALL purchases here.",
+      "type": "billing",
+      "is_billing": true,
+      "camera_primary": "CAM_5"
+    },
+    {
+      "zone_id": "ACCESSORIES_DISPLAY",
+      "description": "Illuminated accessories panel — adjacent to cash counter",
+      "type": "shelf",
+      "is_billing": false,
+      "camera_primary": "CAM_5"
+    },
+    {
+      "zone_id": "STOCKROOM",
+      "description": "Back stockroom — staff only, no customer access",
+      "type": "stockroom",
+      "is_billing": false,
+      "is_staff_only": true,
+      "camera_primary": "CAM_4",
+      "exclude_from_analytics": true
+    }
+  ]
+}
