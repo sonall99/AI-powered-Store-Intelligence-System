@@ -1,6 +1,37 @@
+
+yolov8n.pt
+
+
+# Virtual environment
 venv/
 __pycache__/
 *.pyc
+*.pyo
+
+# Model weights (reviewer downloads their own)
 *.pt
-yolov8n.pt
+*.onnx
+
+# Dataset — NEVER committed
+clips/
+data/*.csv
+data/*.db
+
+# Pipeline output
+events/
+calibration/
 runs/
+
+# Keep folder structure
+!clips/.gitkeep
+!data/.gitkeep
+!events/.gitkeep
+!calibration/.gitkeep
+
+# Environment
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
