@@ -137,13 +137,14 @@ def process_camera(clip_path, camera_config, store_layout, model, args):
     
     # 6. Error handling around Ultralytics track
     try:
+        is_entry_cam = camera_config.get("has_tripwire", False)
         results = model.track(
             source=clip_path,
             stream=True,
             persist=True,
             classes=[0],       # person only
             conf=args.conf,
-            iou=0.7,
+            iou=0.5 if is_entry_cam else 0.7,
             tracker="bytetrack.yaml",
             verbose=False,
         )
@@ -220,7 +221,7 @@ def main():
     parser.add_argument("--events-dir", default=os.getenv("EVENTS_DIR", "events"))
     parser.add_argument("--api",        default=os.getenv("API_URL"))
     parser.add_argument("--model",      default="yolov8n.pt") # CHANGED TO yolov8n.pt FOR SPEED (Optional, change back to 's' if you have GPU)
-    parser.add_argument("--conf",       type=float, default=0.45) # CHANGED DEFAULT TO 0.45 (Crucial Fix #3)
+    parser.add_argument("--conf",       type=float, default=0.25) 
     args = parser.parse_args()
     
     os.makedirs(args.events_dir, exist_ok=True)
