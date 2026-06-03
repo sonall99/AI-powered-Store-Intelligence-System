@@ -1,5 +1,8 @@
 from sqlmodel import Session, select
+from fastapi import HTTPException
+from pydantic import ValidationError
 from models import EventRecord
+from schemas import StoreEventSchema  # Pydantic schema add karna zaroori hai
 from database import engine
 import json, uuid
 from datetime import datetime, timezone
@@ -9,12 +12,22 @@ logger = structlog.get_logger()
 
 def ingest_events(payload: dict) -> dict:
     events = payload.get("events", [])
+    
+    # 1. BATCH LIMIT CHECK (Missing in your code)
+    if len(events) > 500:
+        raise HTTPException(status_code=413, detail="Batch size exceeds maximum limit of 500")
+
     inserted = duplicates = rejected = 0
     errors = []
 
     with Session(engine) as db:
         for e in events:
             try:
+                # 2. SCHEMA VALIDATION (Missing in your code)
+                # Yeh ensure karega ki incoming event strict PDF format mein hai
+                StoreEventSchema(**e)
+
+                # Check Idempotency (Your logic is perfect here)
                 existing = db.get(EventRecord, e.get("event_id", ""))
                 if existing:
                     duplicates += 1
@@ -30,7 +43,6 @@ def ingest_events(payload: dict) -> dict:
                     store_id=e.get("store_id", ""),
                     camera_id=e.get("camera_id", ""),
                     visitor_id=e.get("visitor_id", ""),
-                    session_id=e.get("session_id", ""),
                     event_type=e.get("event_type", ""),
                     timestamp_iso=ts_iso,
                     timestamp_ms=ts_ms,
@@ -42,10 +54,18 @@ def ingest_events(payload: dict) -> dict:
                 )
                 db.add(record)
                 inserted += 1
+                
+            except ValidationError as ve:
+                # Catch malformed events without crashing
+                rejected += 1
+                errors.append({
+                    "event_id": e.get("event_id", "missing"),
+                    "error": "Schema Validation Failed"
+                })
             except Exception as ex:
                 rejected += 1
                 errors.append({
-                    "event_id": e.get("event_id"),
+                    "event_id": e.get("event_id", "missing"),
                     "error": str(ex)
                 })
 
@@ -57,7 +77,7 @@ def ingest_events(payload: dict) -> dict:
                 rejected=rejected)
 
     return {
-        "status": "ok" if rejected == 0 else "partial",
+        "status": "ok" if rejected == 0 else "partial_success", # "partial_success" is more standard
         "inserted": inserted,
         "duplicates": duplicates,
         "rejected": rejected,

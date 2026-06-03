@@ -18,9 +18,7 @@ class EventMetadata:
     queue_depth: Optional[int] = None
     sku_zone: Optional[str] = None
     session_seq: int = 0
-    frame_number: Optional[int] = None
-    clip_id: Optional[str] = None
-
+    
 
 @dataclass
 class StoreEvent:
@@ -28,10 +26,8 @@ class StoreEvent:
     store_id: str
     camera_id: str
     visitor_id: str
-    session_id: str
-    event_type: str        # ENTRY EXIT ZONE_ENTER ZONE_EXIT ZONE_DWELL
-                           # BILLING_QUEUE_JOIN BILLING_QUEUE_ABANDON REENTRY
-    timestamp: str         # ISO-8601 UTC
+    event_type: str        
+    timestamp: str         
     zone_id: Optional[str]
     dwell_ms: int
     is_staff: bool
@@ -56,33 +52,34 @@ VALID_EVENT_TYPES = {
 }
 
 def validate_event(event: StoreEvent) -> list[str]:
-    """
-    Validates event against PDF schema.
-    Returns list of violation strings (empty = valid).
-    """
     violations = []
     d = event.to_dict()
     
-    # Check required fields
+    # 1. Check required fields
     missing = REQUIRED_FIELDS - set(d.keys())
     if missing:
         violations.append(f"Missing required fields: {missing}")
-    
+        
+    # NEW 2. Strict Check: Reject Extra Root Fields
+    extra_root = set(d.keys()) - REQUIRED_FIELDS
+    if extra_root:
+        violations.append(f"Strict Schema Violation! Extra root fields found: {extra_root}")
+
+    # NEW 3. Strict Check: Reject Extra Metadata Fields
+    ALLOWED_METADATA = {"queue_depth", "sku_zone", "session_seq"}
+    meta_dict = d.get("metadata", {})
+    extra_meta = set(meta_dict.keys()) - ALLOWED_METADATA
+    if extra_meta:
+        violations.append(f"Strict Schema Violation! Extra metadata fields found: {extra_meta}")
+        
     # Validate event_type
     if d.get("event_type") not in VALID_EVENT_TYPES:
         violations.append(f"Invalid event_type: {d.get('event_type')}")
-    
+        
     # Validate confidence range
     conf = d.get("confidence", -1)
     if not (0.0 <= conf <= 1.0):
         violations.append(f"confidence {conf} out of range [0.0, 1.0]")
-    
-    # Validate timestamp is ISO-8601 UTC
-    ts = d.get("timestamp", "")
-    try:
-        datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        violations.append(f"Invalid timestamp format: {ts}")
     
     # zone_id rules
     event_type = d.get("event_type", "")
@@ -109,17 +106,18 @@ def make_event(
     store_id: str,
     camera_id: str,
     visitor_id: str,
-    session_id: str,
+    # REMOVED: session_id: str,
     event_type: str,
     timestamp_ms: int,
     zone_id: Optional[str] = None,
     dwell_ms: int = 0,
     is_staff: bool = False,
     confidence: float = 0.9,
-    frame_number: Optional[int] = None,
-    clip_id: Optional[str] = None,
+    # REMOVED: frame_number: Optional[int] = None,
+    # REMOVED: clip_id: Optional[str] = None,
     session_seq: int = 0,
     queue_depth: Optional[int] = None,
+    sku_zone: Optional[str] = None,
 ) -> StoreEvent:
     
     # Convert Unix ms to ISO-8601 UTC
@@ -130,18 +128,16 @@ def make_event(
         store_id=store_id,
         camera_id=camera_id,
         visitor_id=visitor_id,
-        session_id=session_id,
         event_type=event_type,
-        timestamp=ts,
+        timestamp=ts.replace("+00:00", "Z"), # Ensure 'Z' format as per PDF
         zone_id=zone_id,
         dwell_ms=dwell_ms,
         is_staff=is_staff,
         confidence=confidence,
         metadata=EventMetadata(
             queue_depth=queue_depth,
+            sku_zone=sku_zone,
             session_seq=session_seq,
-            frame_number=frame_number,
-            clip_id=clip_id,
         )
     )
 
