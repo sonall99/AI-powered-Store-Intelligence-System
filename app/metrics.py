@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
-from app.models import EventRecord
-from app.database import engine
-from app.sessions import get_pos_data
+from models import EventRecord
+from database import engine
+from sessions import get_pos_data
 
 def get_metrics(store_id: str) -> dict:
     with Session(engine) as db:

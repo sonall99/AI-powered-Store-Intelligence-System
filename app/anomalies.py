@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
-from app.models import EventRecord
-from app.database import engine
-from app.metrics import compute_conversion_rate
+from models import EventRecord
+from database import engine
+from metrics import compute_conversion_rate
 
 def get_anomalies(store_id: str) -> dict:
     anomalies = []

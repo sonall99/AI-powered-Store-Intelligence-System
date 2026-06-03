@@ -1,6 +1,6 @@
 from sqlmodel import Session, select
-from app.models import EventRecord
-from app.database import engine
+from models import EventRecord
+from database import engine
 from datetime import datetime, timezone
 
 def get_health() -> dict:

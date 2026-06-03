@@ -1,18 +1,14 @@
-
-yolov8n.pt
-
-
 # Virtual environment
 venv/
 __pycache__/
 *.pyc
 *.pyo
 
-# Model weights (reviewer downloads their own)
+# Model weights — too large for git
 *.pt
 *.onnx
 
-# Dataset — NEVER committed
+# Dataset — never commit
 clips/
 data/*.csv
 data/*.db
@@ -26,7 +22,6 @@ runs/
 !clips/.gitkeep
 !data/.gitkeep
 !events/.gitkeep
-!calibration/.gitkeep
 
 # Environment
 .env
@@ -35,3 +30,6 @@ runs/
 # OS
 .DS_Store
 Thumbs.db
+
+# IDE
+.vscode/settings.json

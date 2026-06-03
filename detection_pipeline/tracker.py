@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 from datetime import datetime, timezone
 from typing import Optional
-from detection_pipeline.emit import make_event, StoreEvent
+from emit import make_event, StoreEvent
 import collections
 
 
@@ -118,6 +118,8 @@ class TrackState:
         self.staff_history = collections.deque(maxlen=15)
         self.candidate_zone: Optional[str] = None
         self.candidate_frames: int = 0
+        self._local_frag_buffer = {}
+        self._frag_window_ms = 2000
 
 
 class VisitorTracker:
@@ -298,7 +300,17 @@ class VisitorTracker:
         lost_ids = set(self.active_tracks.keys()) - seen_track_ids
         for track_id in lost_ids:
             state = self.active_tracks.pop(track_id)
-            self._add_to_reid_buffer(state)
+            if self.has_tripwire:
+                # Entry camera: add to global Re-ID buffer
+                self._add_to_reid_buffer(state)
+
+            else:
+                # Zone camera: add to local fragmentation buffer only
+                self._local_frag_buffer[state.visitor_id] = {
+                    "embedding": state.appearance,
+                    "lost_at_ms": timestamp_ms,
+                    "session_id": state.session_id,
+                }
             
             # Emit EXIT
             if (not self.has_tripwire and not self.is_stockroom
@@ -329,21 +341,68 @@ class VisitorTracker:
         return events
 
     def _assign_identity(self, appearance, timestamp_ms, is_staff):
+       
+        # Zone cameras: purely local identity, no re-entry concept
+        if not self.has_tripwire:
+
+            # Check fragmentation buffer only (same camera, short gap)
+            if appearance is not None:
+                for vid, data in list(self._local_frag_buffer.items()):
+
+                    age_ms = timestamp_ms - data["lost_at_ms"]
+
+                    # Only check within 2-second fragmentation window
+                    if age_ms > self._frag_window_ms:
+                        del self._local_frag_buffer[vid]
+                        continue
+
+                    if data["embedding"] is not None:
+                        sim = cosine_similarity(
+                            appearance,
+                            data["embedding"]
+                        )
+
+                        if sim > 0.65:
+                            # Resume same session — occlusion, not re-entry
+                            return vid, data["session_id"], False
+
+            # New person on this zone camera
+            visitor_id = f"VIS_{uuid.uuid4().hex[:6]}"
+            session_id = f"SES_{uuid.uuid4().hex[:8]}"
+            return visitor_id, session_id, False
+
+        # Entry camera only: full Re-ID with re-entry detection
         if appearance is not None:
-            for vid, data in self.reid_buffer.items():
+
+            for vid, data in list(self.reid_buffer.items()):
+
                 age_ms = timestamp_ms - data["exited_at_ms"]
+
+                # Expired — clean up
                 if age_ms > self.reentry_window_ms:
+                    del self.reid_buffer[vid]
                     continue
-                
-                if data["embedding"] is not None:
-                    sim = cosine_similarity(appearance, data["embedding"])
-                    if sim > 0.75:
-                        if age_ms < 60_000:
-                            return vid, data["session_id"], False 
-                        
-                        new_session_id = f"SES_{uuid.uuid4().hex[:8]}"
-                        return vid, new_session_id, True
-        
+
+                if data["embedding"] is None:
+                    continue
+
+                sim = cosine_similarity(
+                    appearance,
+                    data["embedding"]
+                )
+
+                if sim > 0.75:
+
+                    if age_ms < 60000:
+                        # Track fragmentation at entry threshold
+                        # Same session — person briefly stepped back
+                        return vid, data["session_id"], False
+
+                    # Genuine re-entry — same person, new session
+                    new_session_id = f"SES_{uuid.uuid4().hex[:8]}"
+                    return vid, new_session_id, True
+
+        # New visitor
         visitor_id = f"VIS_{uuid.uuid4().hex[:6]}"
         session_id = f"SES_{uuid.uuid4().hex[:8]}"
         return visitor_id, session_id, False

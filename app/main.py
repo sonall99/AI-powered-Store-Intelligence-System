@@ -1,23 +1,29 @@
 from fastapi import FastAPI
 import structlog
 
-from app.database import init_db
-from app.sessions import load_pos_data
-from app.ingestion import ingest_events
-from app.metrics import get_metrics
-from app.funnel import get_funnel
-from app.heatmap import get_heatmap
-from app.anomalies import get_anomalies
-from app.health import get_health
+from database import init_db
+from sessions import load_pos_data
+from ingestion import ingest_events
+from metrics import get_metrics
+from funnel import get_funnel
+from heatmap import get_heatmap
+from anomalies import get_anomalies
+from health import get_health
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 logger = structlog.get_logger()
 app = FastAPI(title="Store Intelligence API — ST1008")
-
+app.mount("/static", StaticFiles(directory="/dashboard"), name="static")
 @app.on_event("startup")
 def startup():
     init_db()
     load_pos_data()
     logger.info("api_started")
+
+@app.get("/dashboard")
+def dashboard():
+    return FileResponse("/dashboard/index.html")
 
 @app.get("/health")
 def health():

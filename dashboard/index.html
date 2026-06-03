@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Store Intelligence — ST1008</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    .header {
+      background: #1e293b;
+      padding: 16px 24px;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .badge {
+      background: #22c55e;
+      color: #000;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-weight: 600;
+    }
+    .badge.offline { background: #ef4444; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      padding: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card-label {
+      font-size: 12px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .card-value {
+      font-size: 36px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .card-value.green { color: #22c55e; }
+    .card-value.yellow { color: #eab308; }
+    .card-value.red { color: #ef4444; }
+    .section { padding: 0 24px 24px; }
+    .section h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+    .zone-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .zone-name {
+      width: 180px;
+      font-size: 13px;
+      color: #cbd5e1;
+    }
+    .bar-bg {
+      flex: 1;
+      background: #334155;
+      border-radius: 4px;
+      height: 8px;
+    }
+    .bar-fill {
+      background: #6366f1;
+      border-radius: 4px;
+      height: 8px;
+      transition: width 0.5s ease;
+    }
+    .bar-score {
+      width: 40px;
+      text-align: right;
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .anomaly {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .anomaly.CRITICAL { border-left: 3px solid #ef4444; }
+    .anomaly.WARN { border-left: 3px solid #eab308; }
+    .anomaly.INFO { border-left: 3px solid #3b82f6; }
+    .anomaly-type { font-size: 13px; font-weight: 600; }
+    .anomaly-msg { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+    .funnel-stage {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+    .funnel-count { font-size: 20px; font-weight: 700; }
+    .funnel-drop { font-size: 12px; color: #ef4444; }
+    .last-updated {
+      padding: 12px 24px;
+      font-size: 11px;
+      color: #475569;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Store Intelligence — Brigade Road, Bangalore</h1>
+  <span class="badge" id="status-badge">LIVE</span>
+  <span style="margin-left:auto; font-size:12px; color:#64748b;" id="store-id">ST1008</span>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-label">Unique Visitors</div>
+    <div class="card-value" id="unique-visitors">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Conversion Rate</div>
+    <div class="card-value green" id="conversion-rate">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Queue Depth</div>
+    <div class="card-value yellow" id="queue-depth">—</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Active Anomalies</div>
+    <div class="card-value red" id="anomaly-count">—</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Conversion Funnel</h2>
+  <div id="funnel-container">
+    <div style="color:#475569; font-size:13px;">Loading...</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Zone Heatmap</h2>
+  <div id="heatmap-container">
+    <div style="color:#475569; font-size:13px;">Loading...</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Active Anomalies</h2>
+  <div id="anomalies-container">
+    <div style="color:#475569; font-size:13px;">Loading...</div>
+  </div>
+</div>
+
+<div class="last-updated">Last updated: <span id="last-updated">—</span></div>
+
+<script>
+  const STORE_ID = "ST1008";
+  const API_BASE = window.location.origin;
+
+  async function fetchMetrics() {
+    try {
+      const r = await fetch(`${API_BASE}/stores/${STORE_ID}/metrics`);
+      const data = await r.json();
+      const m = data.metrics;
+
+      document.getElementById("unique-visitors").textContent =
+        m.unique_visitors ?? 0;
+      document.getElementById("conversion-rate").textContent =
+        ((m.conversion_rate ?? 0) * 100).toFixed(1) + "%";
+      document.getElementById("queue-depth").textContent =
+        m.current_queue_depth ?? 0;
+
+      // Color queue depth
+      const qd = m.current_queue_depth ?? 0;
+      const qdEl = document.getElementById("queue-depth");
+      qdEl.className = "card-value " + (qd > 8 ? "red" : qd > 4 ? "yellow" : "green");
+
+      document.getElementById("status-badge").className = "badge";
+      document.getElementById("status-badge").textContent = "LIVE";
+    } catch (e) {
+      document.getElementById("status-badge").className = "badge offline";
+      document.getElementById("status-badge").textContent = "OFFLINE";
+    }
+  }
+
+  async function fetchFunnel() {
+    try {
+      const r = await fetch(`${API_BASE}/stores/${STORE_ID}/funnel`);
+      const data = await r.json();
+      const container = document.getElementById("funnel-container");
+
+      if (!data.stages || data.stages.length === 0) {
+        container.innerHTML = '<div style="color:#475569;font-size:13px;">No data yet</div>';
+        return;
+      }
+
+      container.innerHTML = data.stages.map(s => `
+        <div class="funnel-stage">
+          <span style="font-size:13px;color:#cbd5e1;">${s.stage}</span>
+          <span class="funnel-count">${s.count}</span>
+          <span class="funnel-drop">${s.dropoff_pct > 0 ? "▼ " + s.dropoff_pct + "%" : ""}</span>
+        </div>
+      `).join("");
+    } catch (e) {}
+  }
+
+  async function fetchHeatmap() {
+    try {
+      const r = await fetch(`${API_BASE}/stores/${STORE_ID}/heatmap`);
+      const data = await r.json();
+      const container = document.getElementById("heatmap-container");
+
+      if (!data.zones || data.zones.length === 0) {
+        container.innerHTML = '<div style="color:#475569;font-size:13px;">No data yet</div>';
+        return;
+      }
+
+      container.innerHTML = data.zones.map(z => `
+        <div class="zone-bar">
+          <span class="zone-name">${z.zone_id.replace(/_/g, " ")}</span>
+          <div class="bar-bg">
+            <div class="bar-fill" style="width:${z.heat_score}%"></div>
+          </div>
+          <span class="bar-score">${z.heat_score}</span>
+        </div>
+      `).join("");
+    } catch (e) {}
+  }
+
+  async function fetchAnomalies() {
+    try {
+      const r = await fetch(`${API_BASE}/stores/${STORE_ID}/anomalies`);
+      const data = await r.json();
+      const container = document.getElementById("anomalies-container");
+
+      const real = data.anomalies.filter(a => a.type !== "NO_ANOMALIES");
+      document.getElementById("anomaly-count").textContent = real.length;
+
+      if (real.length === 0) {
+        container.innerHTML =
+          '<div style="color:#22c55e;font-size:13px;">✓ No active anomalies</div>';
+        return;
+      }
+
+      container.innerHTML = real.map(a => `
+        <div class="anomaly ${a.severity}">
+          <div>
+            <div class="anomaly-type">${a.type}</div>
+            <div class="anomaly-msg">${a.message}</div>
+            <div class="anomaly-msg" style="color:#6366f1;margin-top:4px;">
+              → ${a.suggested_action}
+            </div>
+          </div>
+          <span style="margin-left:auto;font-size:11px;color:#475569;">${a.severity}</span>
+        </div>
+      `).join("");
+    } catch (e) {}
+  }
+
+  async function refreshAll() {
+    await Promise.all([
+      fetchMetrics(),
+      fetchFunnel(),
+      fetchHeatmap(),
+      fetchAnomalies()
+    ]);
+    document.getElementById("last-updated").textContent =
+      new Date().toLocaleTimeString();
+  }
+
+  // Initial load
+  refreshAll();
+
+  // Auto-refresh every 5 seconds — live updates
+  setInterval(refreshAll, 5000);
+</script>
+
+</body>
+</html>

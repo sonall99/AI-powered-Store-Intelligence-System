@@ -10,7 +10,7 @@ services:
       - ./dashboard:/dashboard
     environment:
       - DATABASE_URL=sqlite:////data/store_intelligence.db
-      - POS_CSV_PATH=/data/Brigade_Bangalore_10_April_26__1_bc6219c.csv
+      - POS_CSV_PATH=/data/Brigade_Bangalore_10_April_26 (1)bc6219c.csv    
       - LOG_LEVEL=INFO
       - REENTRY_WINDOW_MINUTES=30
       - QUEUE_SPIKE_THRESHOLD=8

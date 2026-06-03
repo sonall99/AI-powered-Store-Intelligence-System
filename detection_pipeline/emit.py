@@ -41,7 +41,69 @@ class StoreEvent:
     def to_dict(self):
         d = asdict(self)
         return d
+# detection_pipeline/emit.py — add this validation function
 
+# Required fields per PDF spec
+REQUIRED_FIELDS = {
+    "event_id", "store_id", "camera_id", "visitor_id",
+    "event_type", "timestamp", "zone_id", "dwell_ms",
+    "is_staff", "confidence", "metadata"
+}
+
+VALID_EVENT_TYPES = {
+    "ENTRY", "EXIT", "ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL",
+    "BILLING_QUEUE_JOIN", "BILLING_QUEUE_ABANDON", "REENTRY"
+}
+
+def validate_event(event: StoreEvent) -> list[str]:
+    """
+    Validates event against PDF schema.
+    Returns list of violation strings (empty = valid).
+    """
+    violations = []
+    d = event.to_dict()
+    
+    # Check required fields
+    missing = REQUIRED_FIELDS - set(d.keys())
+    if missing:
+        violations.append(f"Missing required fields: {missing}")
+    
+    # Validate event_type
+    if d.get("event_type") not in VALID_EVENT_TYPES:
+        violations.append(f"Invalid event_type: {d.get('event_type')}")
+    
+    # Validate confidence range
+    conf = d.get("confidence", -1)
+    if not (0.0 <= conf <= 1.0):
+        violations.append(f"confidence {conf} out of range [0.0, 1.0]")
+    
+    # Validate timestamp is ISO-8601 UTC
+    ts = d.get("timestamp", "")
+    try:
+        datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        violations.append(f"Invalid timestamp format: {ts}")
+    
+    # zone_id rules
+    event_type = d.get("event_type", "")
+    zone_id = d.get("zone_id")
+    if event_type in ("ZONE_ENTER", "ZONE_EXIT", "ZONE_DWELL",
+                       "BILLING_QUEUE_JOIN", "BILLING_QUEUE_ABANDON"):
+        if not zone_id:
+            violations.append(f"zone_id required for {event_type}")
+    if event_type in ("ENTRY", "EXIT", "REENTRY"):
+        if zone_id is not None:
+            violations.append(f"zone_id must be null for {event_type}, got {zone_id}")
+    
+    # event_id must be UUID v4 format
+    import re
+    uuid_pattern = re.compile(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    )
+    if not uuid_pattern.match(d.get("event_id", "")):
+        violations.append(f"event_id not UUID v4: {d.get('event_id')}")
+    
+    return violations
 
 def make_event(
     store_id: str,
@@ -111,6 +173,10 @@ class EventEmitter:
         self.total_emitted = 0
     
     def emit(self, event: StoreEvent):
+        violations = validate_event(event)
+        if violations:
+            import sys
+            print(f"  [SCHEMA WARNING] {event.event_id}: {violations}", file=sys.stderr)
         line = json.dumps(event.to_dict())
         self.file_handle.write(line + "\n")
         self.file_handle.flush()
@@ -143,8 +209,38 @@ class EventEmitter:
             self.buffer.clear()
     
     def flush(self):
-        """Call at end of clip processing."""
         if self.api_url and self.buffer:
             self._post_to_api()
         self.file_handle.close()
         print(f"  Emitted {self.total_emitted} events → {self.output_path}")
+        print(f"  Running schema compliance check...")
+        self._schema_compliance_report()
+
+    def _schema_compliance_report(self):
+        """Read back emitted events and report compliance."""
+        violations = 0
+        total = 0
+        event_ids = set()
+        
+        with open(self.output_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    e = json.loads(line)
+                    total += 1
+                    
+                    # Check uniqueness
+                    eid = e.get("event_id")
+                    if eid in event_ids:
+                        print(f"  [DUPLICATE event_id] {eid}")
+                        violations += 1
+                    event_ids.add(eid)
+                    
+                except json.JSONDecodeError as ex:
+                    print(f"  [INVALID JSON] {ex}")
+                    violations += 1
+        
+        pct = round((1 - violations/max(total,1)) * 100, 1)
+        print(f"  Schema compliance: {pct}% ({total-violations}/{total} valid)")

@@ -1,5 +1,3 @@
-# detection_pipeline/detect.py
-
 import argparse
 import os
 import json
@@ -7,9 +5,9 @@ import cv2
 import re
 from datetime import datetime, timezone, timedelta
 from ultralytics import YOLO
-from detection_pipeline.store_config import load_store_layout
-from detection_pipeline.tracker import VisitorTracker
-from detection_pipeline.emit import EventEmitter
+from store_config import load_store_layout
+from tracker import VisitorTracker
+from emit import EventEmitter
 import traceback # Add this for better error printing
 
 # 1. Path Management (Make it robust across OS)
@@ -170,6 +168,49 @@ def process_camera(clip_path, camera_config, store_layout, model, args):
         emitter.flush()
         print(f"  [Done] Emitted events for {camera_id}")
 
+def print_detection_summary(events_dir: str):
+    """Print summary that evaluator sees when reviewing output."""
+    import glob
+    from collections import Counter
+
+    all_events = []
+    for f in glob.glob(os.path.join(events_dir, "*.jsonl")):
+        with open(f) as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    try:
+                        all_events.append(json.loads(line))
+                    except:
+                        pass
+
+    if not all_events:
+        print("No events generated.")
+        return
+
+    types = Counter(e["event_type"] for e in all_events)
+    cameras = Counter(e["camera_id"] for e in all_events)
+    staff = sum(1 for e in all_events if e["is_staff"])
+    customers = len(all_events) - staff
+    unique_visitors = len(set(
+        e["visitor_id"] for e in all_events if not e["is_staff"]
+    ))
+
+    print(f"\n{'='*50}")
+    print(f"DETECTION SUMMARY")
+    print(f"{'='*50}")
+    print(f"Total events    : {len(all_events)}")
+    print(f"Unique customers: {unique_visitors}")
+    print(f"Staff events    : {staff} ({round(staff/len(all_events)*100)}%)")
+    print(f"Customer events : {customers} ({round(customers/len(all_events)*100)}%)")
+    print(f"\nBy event type:")
+    for t, count in types.most_common():
+        print(f"  {t:<30} {count}")
+    print(f"\nBy camera:")
+    for c, count in cameras.most_common():
+        print(f"  {c:<20} {count}")
+    print(f"{'='*50}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--camera",     help="Process single camera e.g. 'CAM 5.mp4'")
@@ -223,6 +264,8 @@ def main():
     print(f"\n{'='*50}")
     print(f"Pipeline Complete. Events written to {args.events_dir}/")
     print(f"Next step: python detection_pipeline/replay.py --source {args.events_dir}")
+
+    print_detection_summary(args.events_dir)
 
 if __name__ == "__main__":
     main()

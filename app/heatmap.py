@@ -1,6 +1,6 @@
 from sqlmodel import Session, select
-from app.models import EventRecord
-from app.database import engine
+from models import EventRecord
+from database import engine
 
 def get_heatmap(store_id: str) -> dict:
     with Session(engine) as db:
