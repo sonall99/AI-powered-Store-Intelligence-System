@@ -1,0 +1,302 @@
+{
+  "store_id": "ST1009",
+  "store_name": "Store_2",
+  "city": "Unknown",
+  "date": "TBD",
+  "operating_hours": {
+    "open": "11:00",
+    "close": "22:00"
+  },
+  "pos_correlation_window_minutes": 5,
+  "reentry_window_minutes": 30,
+  "staff_uniform": {
+    "hsv_lower": [
+      140,
+      100,
+      60
+    ],
+    "hsv_upper": [
+      178,
+      255,
+      221
+    ],
+    "pixel_ratio_threshold": 0.35,
+    "description": "Pink/magenta uniform \u00e2\u20ac\u201d confirmed from challenge brief",
+    "notes": "HSV range covers pink-magenta. Lower threshold 0.35 because pink reflects more light than black."
+  },
+  "cameras": [
+    {
+      "camera_id": "CAM_ENTRY_S2",
+      "filename": "entry 2.mp4",
+      "role": "entry_exit",
+      "has_tripwire": true,
+      "contributes_to_entry_count": true,
+      "is_stockroom": false,
+      "start_time": "2026-04-10T20:10:00",
+      "fps": 29.97,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "tripwire": {
+        "x1": 200,
+        "y1": 650,
+        "x2": 900,
+        "y2": 650,
+        "inside_is": "bottom",
+        "buffer_px": 50
+      },
+      "zone_polygons": {
+        "ENTRY_EXIT": [[0, 0], [1920, 0], [1920, 1080], [0, 1080]],
+        "FOH_ENTRANCE": [
+          [
+            0,
+            0
+          ],
+          [
+            1920,
+            400
+          ],
+          [
+            1920,
+            0
+          ],
+          [
+            0,
+            0
+          ]
+        ]
+      }
+    },
+    {
+      "camera_id": "CAM_FLOOR_S2",
+      "filename": "zone.mp4",
+      "role": "main_floor",
+      "has_tripwire": false,
+      "contributes_to_entry_count": false,
+      "is_stockroom": false,
+      "start_time": "TBD",
+      "fps": 29.97,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "zone_polygons": {
+        "FOH": [
+          [
+            0,
+            0
+          ],
+          [
+            1920,
+            0
+          ],
+          [
+            1920,
+            1080
+          ],
+          [
+            0,
+            1080
+          ]
+        ],
+        "GONDOLA_1": [
+          [
+            200,
+            600
+          ],
+          [
+            700,
+            600
+          ],
+          [
+            700,
+            1000
+          ],
+          [
+            200,
+            1000
+          ]
+        ],
+        "GONDOLA_2": [
+          [
+            300,
+            200
+          ],
+          [
+            750,
+            200
+          ],
+          [
+            750,
+            650
+          ],
+          [
+            300,
+            650
+          ]
+        ],
+        "WALL_UNITS_LEFT": [
+          [
+            0,
+            0
+          ],
+          [
+            200,
+            0
+          ],
+          [
+            200,
+            1080
+          ],
+          [
+            0,
+            1080
+          ]
+        ],
+        "WALL_UNITS_RIGHT": [
+          [
+            1720,
+            0
+          ],
+          [
+            1920,
+            0
+          ],
+          [
+            1920,
+            1080
+          ],
+          [
+            1720,
+            1080
+          ]
+        ],
+        "MAKEUP_STATIONS": [
+          [
+            1100,
+            400
+          ],
+          [
+            1800,
+            400
+          ],
+          [
+            1800,
+            900
+          ],
+          [
+            1100,
+            900
+          ]
+        ]
+      }
+    },
+    {
+      "camera_id": "CAM_BILLING_S2",
+      "filename": "billing_area.mp4",
+      "role": "billing",
+      "has_tripwire": false,
+      "contributes_to_entry_count": false,
+      "is_stockroom": false,
+      "start_time": "TBD",
+      "fps": 29.97,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "zone_polygons": {
+        "CASH_COUNTER": [
+          [
+            300,
+            200
+          ],
+          [
+            1100,
+            200
+          ],
+          [
+            1100,
+            800
+          ],
+          [
+            300,
+            800
+          ]
+        ],
+        "BILLING_QUEUE": [
+          [
+            200,
+            700
+          ],
+          [
+            1200,
+            700
+          ],
+          [
+            1200,
+            1080
+          ],
+          [
+            200,
+            1080
+          ]
+        ]
+      }
+    }
+  ],
+  "zones": [
+    {
+      "zone_id": "ENTRY_EXIT",
+      "type": "threshold",
+      "is_billing": false
+    },
+    {
+      "zone_id": "FOH",
+      "type": "floor",
+      "is_billing": false
+    },
+    {
+      "zone_id": "GONDOLA_1",
+      "type": "display",
+      "is_billing": false
+    },
+    {
+      "zone_id": "GONDOLA_2",
+      "type": "display",
+      "is_billing": false
+    },
+    {
+      "zone_id": "WALL_UNITS_LEFT",
+      "type": "shelf",
+      "is_billing": false
+    },
+    {
+      "zone_id": "WALL_UNITS_RIGHT",
+      "type": "shelf",
+      "is_billing": false
+    },
+    {
+      "zone_id": "MAKEUP_STATIONS",
+      "type": "service",
+      "is_billing": false
+    },
+    {
+      "zone_id": "CASH_COUNTER",
+      "type": "billing",
+      "is_billing": true
+    },
+    {
+      "zone_id": "BILLING_QUEUE",
+      "type": "queue",
+      "is_billing": true
+    },
+    {
+      "zone_id": "STOCKROOM",
+      "type": "stockroom",
+      "is_billing": false,
+      "is_staff_only": true,
+      "exclude_from_analytics": true
+    }
+  ]
+}

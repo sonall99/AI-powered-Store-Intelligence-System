@@ -192,7 +192,7 @@ class VisitorTracker:
         )
         return is_staff
     
-    def process_frame(self, result, frame_idx: int, timestamp_ms: int) -> list[StoreEvent]:
+    def process_frame(self, result, frame_idx: int, timestamp_ms: int) -> list:
         """Process one frame of YOLO tracking results. Returns list of events."""
         events = []
         frame = result.orig_img
@@ -210,6 +210,12 @@ class VisitorTracker:
                 xyxy = box.xyxy[0].cpu().numpy()
                 centroid = get_centroid(xyxy)
                 seen_track_ids.add(track_id)
+
+               
+                if track_id in self.active_tracks:
+                    if self.active_tracks[track_id].crossed_tripwire:
+                        self.active_tracks[track_id].crossed_tripwire = False
+                # --------------------------------------------------
                 
                 # --- NEW CASCADING STAFF DETECTION ---
                 if self.is_stockroom:
@@ -285,7 +291,7 @@ class VisitorTracker:
                                 clip_id=self.clip_id,
                                 session_seq=state.session_seq,
                             ))
-                        state.crossed_tripwire = False
+                        # 🔴 YAHAN SE 'state.crossed_tripwire = False' HATA DIYA GAYA HAI
                 
                 # Zone detection
                 if not self.has_tripwire and not self.is_stockroom:
@@ -432,6 +438,13 @@ class VisitorTracker:
             if prev[1] > (wire_y + buffer_size) and curr[1] < (wire_y - buffer_size):
                 return "entry"
             if prev[1] < (wire_y - buffer_size) and curr[1] > (wire_y + buffer_size):
+                return "exit"
+        elif inside_is == "bottom":
+            # Inside = bottom of frame (higher Y value)
+            # ENTRY: moving from low Y (outside/top) to high Y (inside/bottom)
+            if prev[1] < (wire_y - buffer_size) and curr[1] > (wire_y + buffer_size):
+                return "entry"
+            if prev[1] > (wire_y + buffer_size) and curr[1] < (wire_y - buffer_size):
                 return "exit"
         
         return None
