@@ -297,8 +297,19 @@
   // Initial load
   refreshAll();
 
-  // Auto-refresh every 5 seconds — live updates
-  setInterval(refreshAll, 5000);
+  // --- SSE Implementation replaced setInterval ---
+  const evtSource = new EventSource(`${API_BASE}/events/stream`);
+
+  evtSource.onmessage = function(event) {
+    // Refresh all components whenever the server pushes a new event
+    refreshAll();
+  };
+
+  evtSource.onerror = function(err) {
+    document.getElementById("status-badge").className = "badge offline";
+    document.getElementById("status-badge").textContent = "RECONNECTING...";
+  };
+
 </script>
 
 </body>

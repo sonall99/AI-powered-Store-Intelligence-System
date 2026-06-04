@@ -24,7 +24,7 @@ def get_metrics(store_id: str) -> dict:
                 "active_visitors": 0
             },
             "data_quality": {
-                "session_count": 0,
+                "visitor_count": 0,  # <-- Changed from session_count
                 "confidence_flag": "NO_DATA"
             }
         }
@@ -55,7 +55,7 @@ def get_metrics(store_id: str) -> dict:
             "active_visitors": unique_visitors
         },
         "data_quality": {
-            "session_count": len(set(e.session_id for e in all_events)),
+            "visitor_count": unique_visitors,  # <-- Changed from session_count
             "confidence_flag": "OK" if unique_visitors >= 1 else "NO_DATA"
         }
     }
@@ -70,24 +70,24 @@ def compute_conversion_rate(store_id: str, customer_events: list) -> float:
     if not store_txns:
         return 0.0
 
-    billing_sessions = {}
+    billing_visitors_ts = {}
     for e in customer_events:
         if e.zone_id == "CASH_COUNTER":
-            if e.session_id not in billing_sessions:
-                billing_sessions[e.session_id] = e.timestamp_ms
+            if e.visitor_id not in billing_visitors_ts:  
+                billing_visitors_ts[e.visitor_id] = e.timestamp_ms
 
-    converted_sessions = set()
+    converted_visitors = set()
     window_ms = 5 * 60 * 1000
 
     for txn in store_txns:
-        for sid, billing_ts in billing_sessions.items():
+        for vid, billing_ts in billing_visitors_ts.items():
             # Transaction must come AFTER billing zone entry
             if 0 <= txn["timestamp_ms"] - billing_ts <= window_ms:
-                converted_sessions.add(sid)
+                converted_visitors.add(vid)
                 break
 
-    unique_sessions = len(set(e.session_id for e in customer_events))
-    if unique_sessions == 0:
+    unique_visitors = len(set(e.visitor_id for e in customer_events)) 
+    if unique_visitors == 0:
         return 0.0
 
-    return len(converted_sessions) / unique_sessions
+    return len(converted_visitors) / unique_visitors

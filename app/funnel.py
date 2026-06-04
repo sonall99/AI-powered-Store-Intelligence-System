@@ -21,31 +21,31 @@ def get_funnel(store_id: str) -> dict:
                 {"stage": "Billing Zone", "count": 0, "dropoff_pct": 0},
                 {"stage": "Purchase",     "count": 0, "dropoff_pct": 0},
             ],
-            "session_unit": True,
+            "visitor_unit": True,  # Changed from session_unit
             "reentry_excluded": True
         }
 
-    sessions = {}
+    visitors = {}
     for e in events:
-        sid = e.session_id
-        if sid not in sessions:
-            sessions[sid] = {
+        vid = e.visitor_id
+        if vid not in visitors:
+            visitors[vid] = {
                 "visitor_id": e.visitor_id,
                 "zones": set(),
                 "billing": False
             }
         if e.zone_id:
-            sessions[sid]["zones"].add(e.zone_id)
+            visitors[vid]["zones"].add(e.zone_id)
         if e.zone_id == "CASH_COUNTER":
-            sessions[sid]["billing"] = True
+            visitors[vid]["billing"] = True
 
-    total = len(sessions)
-    visited_zone = sum(1 for s in sessions.values() if s["zones"])
-    reached_billing = sum(1 for s in sessions.values() if s["billing"])
+    total = len(visitors)
+    visited_zone = sum(1 for v in visitors.values() if v["zones"])
+    reached_billing = sum(1 for v in visitors.values() if v["billing"])
 
     rate = compute_conversion_rate(store_id, events)
-    unique_sessions = len(set(e.session_id for e in events))
-    converted = round(rate * unique_sessions)
+    unique_visitors = len(set(e.visitor_id for e in events))
+    converted = round(rate * unique_visitors)
 
     def dropoff(a, b):
         return round((1 - a / b) * 100, 1) if b > 0 else 0
@@ -62,6 +62,6 @@ def get_funnel(store_id: str) -> dict:
             {"stage": "Purchase",     "count": converted,
              "dropoff_pct": dropoff(converted, reached_billing)},
         ],
-        "session_unit": True,
+        "visitor_unit": True, # Changed from session_unit
         "reentry_excluded": True
     }

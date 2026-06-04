@@ -101,16 +101,14 @@ def is_staff_by_uniform(frame, xyxy, hsv_lower, hsv_upper, threshold=0.40) -> tu
 class TrackState:
     """State for a single tracked person across frames."""
     
-    def __init__(self, visitor_id: str, session_id: str, is_staff: bool, timestamp_ms: int):
+    def __init__(self, visitor_id: str, is_staff: bool, timestamp_ms: int):
         self.visitor_id = visitor_id
-        self.session_id = session_id
         self.is_staff = is_staff
         self.created_at_ms = timestamp_ms
         self.last_seen_ms = timestamp_ms
         self.current_zone: Optional[str] = None
         self.zone_entered_at_ms: Optional[int] = None
         self.last_dwell_emit_ms: Optional[int] = None
-        self.session_seq = 0
         self.appearance: Optional[np.ndarray] = None
         self.crossed_tripwire = False
         
@@ -118,8 +116,7 @@ class TrackState:
         self.staff_history = collections.deque(maxlen=15)
         self.candidate_zone: Optional[str] = None
         self.candidate_frames: int = 0
-        self._local_frag_buffer = {}
-        self._frag_window_ms = 2000
+        # REMOVED local_frag_buffer variables from here
 
 
 class VisitorTracker:
@@ -156,9 +153,13 @@ class VisitorTracker:
         # Active tracks: ByteTrack int ID → TrackState
         self.active_tracks: dict[int, TrackState] = {}
         
-        # Re-ID buffer: visitor_id → {embedding, exited_at_ms, session_id}
+        # Re-ID buffer: visitor_id → {embedding, exited_at_ms}
         self.reid_buffer: dict[str, dict] = {}
         self.reentry_window_ms = store_layout.get("reentry_window_minutes", 30) * 60 * 1000
+
+        # Local fragmentation buffer (Claude fix)
+        self._local_frag_buffer = {}
+        self._frag_window_ms = 2000
         
         # Previous centroids for tripwire crossing detection
         self.prev_centroids: dict[int, tuple] = {}
@@ -167,8 +168,6 @@ class VisitorTracker:
         self.billing_zones = {z["zone_id"] for z in store_layout.get("zones", [])
                               if z.get("is_billing")}
         self.current_queue_depth = 0
-        
-        self.clip_id = f"{self.store_id}_{self.camera_id}"
 
     
     def _determine_staff(self, frame, xyxy, centroid: tuple) -> bool:
@@ -210,12 +209,10 @@ class VisitorTracker:
                 xyxy = box.xyxy[0].cpu().numpy()
                 centroid = get_centroid(xyxy)
                 seen_track_ids.add(track_id)
-
                
                 if track_id in self.active_tracks:
                     if self.active_tracks[track_id].crossed_tripwire:
                         self.active_tracks[track_id].crossed_tripwire = False
-                # --------------------------------------------------
                 
                 # --- NEW CASCADING STAFF DETECTION ---
                 if self.is_stockroom:
@@ -228,10 +225,10 @@ class VisitorTracker:
                 
                 # New track
                 if track_id not in self.active_tracks:
-                    visitor_id, session_id, is_reentry = self._assign_identity(
+                    visitor_id, is_reentry = self._assign_identity(
                         appearance, timestamp_ms, is_staff
                     )
-                    state = TrackState(visitor_id, session_id, is_staff, timestamp_ms)
+                    state = TrackState(visitor_id, is_staff, timestamp_ms)
                     state.appearance = appearance
                     self.active_tracks[track_id] = state
                     
@@ -246,13 +243,10 @@ class VisitorTracker:
                                 store_id=self.store_id,
                                 camera_id=self.camera_id,
                                 visitor_id=visitor_id,
-                                session_id=session_id,
                                 event_type="REENTRY",
                                 timestamp_ms=timestamp_ms,
                                 is_staff=False,
-                                confidence=conf,
-                                frame_number=frame_idx,
-                                clip_id=self.clip_id,
+                                confidence=conf
                             ))
                 
                 state = self.active_tracks[track_id]
@@ -271,7 +265,6 @@ class VisitorTracker:
                     )
                     if crossing and not state.crossed_tripwire:
                         state.crossed_tripwire = True
-                        state.session_seq += 1
                         event_type = "ENTRY" if crossing == "entry" else "EXIT"
                         
                         if event_type == "EXIT":
@@ -282,16 +275,11 @@ class VisitorTracker:
                                 store_id=self.store_id,
                                 camera_id=self.camera_id,
                                 visitor_id=state.visitor_id,
-                                session_id=state.session_id,
                                 event_type=event_type,
                                 timestamp_ms=timestamp_ms,
                                 is_staff=False,
-                                confidence=conf,
-                                frame_number=frame_idx,
-                                clip_id=self.clip_id,
-                                session_seq=state.session_seq,
+                                confidence=conf
                             ))
-                        # 🔴 YAHAN SE 'state.crossed_tripwire = False' HATA DIYA GAYA HAI
                 
                 # Zone detection
                 if not self.has_tripwire and not self.is_stockroom:
@@ -315,7 +303,6 @@ class VisitorTracker:
                 self._local_frag_buffer[state.visitor_id] = {
                     "embedding": state.appearance,
                     "lost_at_ms": timestamp_ms,
-                    "session_id": state.session_id,
                 }
             
             # Emit EXIT
@@ -326,15 +313,12 @@ class VisitorTracker:
                     store_id=self.store_id,
                     camera_id=self.camera_id,
                     visitor_id=state.visitor_id,
-                    session_id=state.session_id,
                     event_type="ZONE_EXIT",
                     timestamp_ms=timestamp_ms,
                     zone_id=state.current_zone,
                     dwell_ms=dwell,
                     is_staff=False,
-                    confidence=0.5,
-                    frame_number=frame_idx,
-                    clip_id=self.clip_id,
+                    confidence=0.5
                 ))
         
         # Update billing queue depth
@@ -370,12 +354,11 @@ class VisitorTracker:
 
                         if sim > 0.65:
                             # Resume same session — occlusion, not re-entry
-                            return vid, data["session_id"], False
+                            return vid, False
 
             # New person on this zone camera
             visitor_id = f"VIS_{uuid.uuid4().hex[:6]}"
-            session_id = f"SES_{uuid.uuid4().hex[:8]}"
-            return visitor_id, session_id, False
+            return visitor_id, False
 
         # Entry camera only: full Re-ID with re-entry detection
         if appearance is not None:
@@ -401,23 +384,19 @@ class VisitorTracker:
 
                     if age_ms < 60000:
                         # Track fragmentation at entry threshold
-                        # Same session — person briefly stepped back
-                        return vid, data["session_id"], False
+                        return vid, False
 
-                    # Genuine re-entry — same person, new session
-                    new_session_id = f"SES_{uuid.uuid4().hex[:8]}"
-                    return vid, new_session_id, True
+                    # Genuine re-entry
+                    return vid, True
 
         # New visitor
         visitor_id = f"VIS_{uuid.uuid4().hex[:6]}"
-        session_id = f"SES_{uuid.uuid4().hex[:8]}"
-        return visitor_id, session_id, False
+        return visitor_id, False
     
     def _add_to_reid_buffer(self, state: TrackState):
         self.reid_buffer[state.visitor_id] = {
             "embedding": state.appearance,
             "exited_at_ms": state.last_seen_ms,
-            "session_id": state.session_id 
         }
     
     def _check_tripwire_crossing(self, prev: tuple, curr: tuple) -> Optional[str]:
@@ -440,8 +419,6 @@ class VisitorTracker:
             if prev[1] < (wire_y - buffer_size) and curr[1] > (wire_y + buffer_size):
                 return "exit"
         elif inside_is == "bottom":
-            # Inside = bottom of frame (higher Y value)
-            # ENTRY: moving from low Y (outside/top) to high Y (inside/bottom)
             if prev[1] < (wire_y - buffer_size) and curr[1] > (wire_y + buffer_size):
                 return "entry"
             if prev[1] > (wire_y + buffer_size) and curr[1] < (wire_y - buffer_size):
@@ -470,15 +447,13 @@ class VisitorTracker:
                     dwell = timestamp_ms - (state.zone_entered_at_ms or timestamp_ms)
                     events.append(make_event(
                         store_id=self.store_id, camera_id=self.camera_id,
-                        visitor_id=state.visitor_id, session_id=state.session_id,
+                        visitor_id=state.visitor_id,
                         event_type="ZONE_EXIT", timestamp_ms=timestamp_ms,
                         zone_id=state.current_zone, dwell_ms=dwell,
-                        is_staff=state.is_staff, confidence=conf,
-                        frame_number=frame_idx, clip_id=self.clip_id,
+                        is_staff=state.is_staff, confidence=conf
                     ))
                 
                 if current_zone is not None:
-                    state.session_seq += 1
                     if current_zone in self.billing_zones:
                         queue_at_entry = sum(
                             1 for s in self.active_tracks.values()
@@ -487,21 +462,18 @@ class VisitorTracker:
                         event_type = "BILLING_QUEUE_JOIN" if queue_at_entry > 0 else "ZONE_ENTER"
                         events.append(make_event(
                             store_id=self.store_id, camera_id=self.camera_id,
-                            visitor_id=state.visitor_id, session_id=state.session_id,
+                            visitor_id=state.visitor_id,
                             event_type=event_type, timestamp_ms=timestamp_ms,
                             zone_id=current_zone, is_staff=state.is_staff,
-                            confidence=conf, frame_number=frame_idx,
-                            clip_id=self.clip_id, session_seq=state.session_seq,
-                            queue_depth=queue_at_entry,
+                            confidence=conf
                         ))
                     else:
                         events.append(make_event(
                             store_id=self.store_id, camera_id=self.camera_id,
-                            visitor_id=state.visitor_id, session_id=state.session_id,
+                            visitor_id=state.visitor_id,
                             event_type="ZONE_ENTER", timestamp_ms=timestamp_ms,
                             zone_id=current_zone, is_staff=state.is_staff,
-                            confidence=conf, frame_number=frame_idx,
-                            clip_id=self.clip_id, session_seq=state.session_seq,
+                            confidence=conf
                         ))
                 
                 state.zone_entered_at_ms = timestamp_ms
@@ -517,11 +489,10 @@ class VisitorTracker:
                 total_dwell = timestamp_ms - (state.zone_entered_at_ms or timestamp_ms)
                 events.append(make_event(
                     store_id=self.store_id, camera_id=self.camera_id,
-                    visitor_id=state.visitor_id, session_id=state.session_id,
+                    visitor_id=state.visitor_id,
                     event_type="ZONE_DWELL", timestamp_ms=timestamp_ms,
                     zone_id=state.current_zone, dwell_ms=total_dwell,
-                    is_staff=state.is_staff, confidence=conf,
-                    frame_number=frame_idx, clip_id=self.clip_id,
+                    is_staff=state.is_staff, confidence=conf
                 ))
                 state.last_dwell_emit_ms = timestamp_ms
         

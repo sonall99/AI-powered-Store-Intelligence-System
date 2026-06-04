@@ -11,3 +11,5 @@ pytest-cov==5.0.0
 ultralytics==8.2.0
 opencv-python-headless==4.9.0.80
 numpy==1.26.4
+structlog
+python-multipart

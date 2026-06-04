@@ -19,11 +19,11 @@ def get_heatmap(store_id: str) -> dict:
             zone_stats[e.zone_id] = {
                 "visits": 0,
                 "dwell_total": 0,
-                "sessions": set()
+                "visitors": set()  # <-- Changed from sessions
             }
         zone_stats[e.zone_id]["visits"] += 1
         zone_stats[e.zone_id]["dwell_total"] += e.dwell_ms
-        zone_stats[e.zone_id]["sessions"].add(e.session_id)
+        zone_stats[e.zone_id]["visitors"].add(e.visitor_id)  
 
     if not zone_stats:
         return {"store_id": store_id, "zones": []}
@@ -43,7 +43,7 @@ def get_heatmap(store_id: str) -> dict:
             "visit_frequency": stats["visits"],
             "avg_dwell_ms": round(avg_dwell),
             "heat_score": heat,
-            "data_confidence": "LOW" if len(stats["sessions"]) < 5 else "OK"
+            "data_confidence": "LOW" if len(stats["visitors"]) < 5 else "OK"  # <-- Changed from sessions
         })
 
     return {
