@@ -5,12 +5,46 @@ AI-powered retail analytics pipeline. Processes CCTV footage to produce real-tim
 
 ---
 
-## Quick Start — 5 Commands
+## Quick Start (5-Command Setup)
+
+### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/sonall99/AI-powered-Store-Intelligence-System cd AI-powered-Store-Intelligence-System
-docker compose up --build
-open http://localhost:8000/dashboard
+git clone https://github.com/sonall99/AI-powered-Store-Intelligence-System.git
+cd AI-powered-Store-Intelligence-System
+```
+
+### 2. Build and Start Services
+
+```bash
+docker compose up --build -d
+```
+
+### 3. Verify Health
+
+```bash
+curl http://localhost:8000/health
+```
+
+Expected response:
+```json
+{"status": "ok", "service": "store-intelligence-api", "database": "ok"}
+```
+
+### 4. Generate Events from CCTV Footage
+
+Processes store camera footage and generates structured retail events.
+
+```bash
+python detection_pipeline/detect.py
+```
+
+### 5. Replay Events into Backend
+
+Streams the generated events into the API for live analytics.
+
+```bash
+python detection_pipeline/replay.py
 ```
 
 The API starts at `http://localhost:8000`.  
@@ -40,7 +74,7 @@ Expected health response:
 
 ## Loading Detection Events Into The API
 
-### Option A — Replay Pre-generated Events (fastest, no GPU required)
+###  Replay Pre-generated Events (fastest, no GPU required)
 
 ```bash
 python detection_pipeline/replay.py
@@ -49,37 +83,6 @@ python detection_pipeline/replay.py
 This reads all `.jsonl` files from `events/` and POSTs them to the API.  
 After replay, `/stores/ST1008/metrics` will return real visitor and zone data.
 
-### Option B — Run the Full Detection Pipeline on Video Clips
-
-```bash
-# Place your MP4 files in clips/
-# Store 1: CAM 1.mp4, CAM 2.mp4, CAM 3.mp4, CAM 4.mp4, CAM 5.mp4
-# Store 2: entry 1.mp4, floor.mp4, billing.mp4
-
-pip install -r requirements.txt
-
-# Process Store 1
-python detection_pipeline/detect.py \
-    --layout config/store_layout.json \
-    --events-dir events/store1
-
-# Process Store 2
-python detection_pipeline/detect.py \
-    --layout config/store_layout_store2.json \
-    --events-dir events/store2
-
-# Load all events into the running API
-python detection_pipeline/replay.py --source events/store1
-python detection_pipeline/replay.py --source events/store2
-```
-
-### Option C — Docker Pipeline (detection inside container)
-
-```bash
-docker compose --profile detection run pipeline
-```
-
----
 
 ## API Endpoints
 
@@ -93,9 +96,6 @@ docker compose --profile detection run pipeline
 | GET | `/stores/{id}/anomalies` | Active anomalies with severity and suggested action |
 | GET | `/dashboard` | Live analytics dashboard (SSE-powered, no polling) |
 
-**Store IDs in this dataset:**
-- `ST1008` — Brigade Road, Bangalore
-- `ST1009` — Store 2
 
 ---
 
@@ -112,30 +112,6 @@ Expected: all tests pass, coverage ≥ 75%.
 - `tests/test_ingestion.py` — Idempotency, partial failure, all-staff clip
 - `tests/test_metrics.py` — Empty store, zero-purchase, re-entry deduplication
 - `tests/test_anomalies.py` — Queue spike, conversion drop, health endpoint
-- `tests/test_pipeline.py` — Schema compliance on emitted JSONL events
-
----
-
-## Calibrating For New Store Footage
-
-If running on a store not covered by the provided config files:
-
-```bash
-# Step 1: Inspect clips to get fps, resolution, duration
-python detection_pipeline/inspect_clips.py --clips-dir clips/newstore
-
-# Step 2: Calibrate staff uniform colour (click on uniform in frame)
-python detection_pipeline/calibrate_staff_hsv.py \
-    --clip clips/newstore/floor.mp4
-
-# Step 3: Set entry tripwire (click two points on door threshold)
-python detection_pipeline/calibrate.py \
-    --clip clips/newstore/entry.mp4 \
-    --camera CAM_ENTRY \
-    --layout config/store_layout_newstore.json
-```
-
-Calibration outputs update `store_layout.json` automatically.
 
 ---
 
@@ -174,19 +150,6 @@ Decision rationale: [`docs/CHOICES.md`](docs/CHOICES.md)
 
 ---
 
-## Configuration
-
-All store-specific configuration is in `config/`:
-
-```
-config/
-├── store_layout.json           # Store 1 — Brigade Road
-└── store_layout_store2.json    # Store 2
-```
-
-Each file contains: zone polygons, camera roles, tripwire coordinates, staff uniform HSV range, POS correlation window, and re-entry window. The detection pipeline reads these at runtime — no code changes needed for a new store.
-
----
 
 ## Known Limitations
 
