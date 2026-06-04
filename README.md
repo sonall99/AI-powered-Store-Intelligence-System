@@ -1,7 +1,9 @@
 # Store Intelligence System
 ### Purplle Tech Challenge 2026 — Round 2
 
-AI-powered retail analytics pipeline. Processes CCTV footage to produce real-time store metrics: visitor counts, conversion rate, zone heatmap, and operational anomalies. Built for Brigade Road Bangalore (ST1008) and Store 2 with generalised multi-store architecture.
+A production-ready retail analytics system engineered to process raw CCTV footage, emit structured behavioral events, and compute real-time conversion metrics at the edge. 
+
+Built to eliminate offline retail data blind spots, this system focuses strictly on the North Star metric: **Offline Store Conversion Rate**.
 
 ---
 
