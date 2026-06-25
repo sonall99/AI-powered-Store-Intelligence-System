@@ -135,7 +135,7 @@ events/*.jsonl
 replay.py → POST /events/ingest
       │
       ▼
-SQLite (WAL mode)
+SQLite 
   ├── GET /metrics    (read-time computation)
   ├── GET /funnel     (visitor_id deduplication)
   ├── GET /heatmap    (normalised zone scores)
